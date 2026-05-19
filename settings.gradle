@@ -1,0 +1,2 @@
+rootProject.name = "Ps1 emulator"
+include ':app'

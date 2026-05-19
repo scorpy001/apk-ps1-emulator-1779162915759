@@ -1,0 +1,539 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>PS1 Emulator</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&display=swap');
+
+  :root {
+    --bg: #0a0a0f;
+    --surface: #111118;
+    --border: #1e1e2e;
+    --accent: #00d4ff;
+    --accent2: #ff006e;
+    --text: #e0e0f0;
+    --muted: #555570;
+    --glow: 0 0 20px rgba(0,212,255,0.3);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Share Tech Mono', monospace;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Scanline overlay */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0,0,0,0.08) 2px,
+      rgba(0,0,0,0.08) 4px
+    );
+    pointer-events: none;
+    z-index: 9999;
+  }
+
+  header {
+    padding: 20px 16px 12px;
+    text-align: center;
+    border-bottom: 1px solid var(--border);
+    position: relative;
+    overflow: hidden;
+  }
+
+  header::after {
+    content: '';
+    position: absolute;
+    bottom: 0; left: 50%;
+    transform: translateX(-50%);
+    width: 200px; height: 1px;
+    background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  }
+
+  .logo {
+    font-family: 'Orbitron', sans-serif;
+    font-weight: 900;
+    font-size: 22px;
+    letter-spacing: 6px;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    text-shadow: none;
+    filter: drop-shadow(0 0 10px rgba(0,212,255,0.5));
+  }
+
+  .subtitle {
+    font-size: 10px;
+    color: var(--muted);
+    letter-spacing: 3px;
+    margin-top: 4px;
+    text-transform: uppercase;
+  }
+
+  /* SCREEN SECTION */
+  #screen-section {
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    padding: 16px;
+  }
+
+  #screen-section.active { display: flex; }
+
+  #emulator-container {
+    width: 100%;
+    max-width: 640px;
+    aspect-ratio: 4/3;
+    background: #000;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    box-shadow: var(--glow), 0 0 60px rgba(255,0,110,0.1);
+    overflow: hidden;
+    position: relative;
+  }
+
+  #emulator-container canvas,
+  #emulator-container video {
+    width: 100% !important;
+    height: 100% !important;
+    object-fit: contain;
+  }
+
+  .game-title-bar {
+    width: 100%;
+    max-width: 640px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 4px;
+    font-size: 11px;
+    color: var(--muted);
+  }
+
+  #current-game-name {
+    color: var(--accent);
+    font-size: 12px;
+    letter-spacing: 1px;
+  }
+
+  .btn-small {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    padding: 5px 12px;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 10px;
+    border-radius: 2px;
+    cursor: pointer;
+    letter-spacing: 1px;
+    transition: all 0.2s;
+  }
+  .btn-small:active { color: var(--accent); border-color: var(--accent); }
+
+  /* LOAD SECTION */
+  #load-section {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 30px 16px;
+    gap: 20px;
+  }
+
+  .ps-logo {
+    width: 80px;
+    height: 80px;
+    position: relative;
+    margin: 10px auto;
+  }
+
+  .ps-logo svg {
+    width: 100%;
+    height: 100%;
+    filter: drop-shadow(0 0 15px rgba(0,212,255,0.4));
+  }
+
+  .info-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 16px;
+    width: 100%;
+    max-width: 400px;
+    font-size: 11px;
+    color: var(--muted);
+    line-height: 1.8;
+  }
+
+  .info-card .label {
+    color: var(--accent);
+    font-size: 10px;
+    letter-spacing: 2px;
+    margin-bottom: 8px;
+    display: block;
+  }
+
+  .format-list {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-top: 8px;
+  }
+
+  .format-tag {
+    background: rgba(0,212,255,0.08);
+    border: 1px solid rgba(0,212,255,0.2);
+    color: var(--accent);
+    padding: 3px 8px;
+    border-radius: 2px;
+    font-size: 10px;
+    letter-spacing: 1px;
+  }
+
+  /* Upload zone */
+  #drop-zone {
+    width: 100%;
+    max-width: 400px;
+    border: 2px dashed var(--border);
+    border-radius: 8px;
+    padding: 40px 20px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.3s;
+    position: relative;
+    overflow: hidden;
+  }
+
+  #drop-zone.dragover {
+    border-color: var(--accent);
+    background: rgba(0,212,255,0.05);
+    box-shadow: var(--glow);
+  }
+
+  #drop-zone .drop-icon {
+    font-size: 40px;
+    margin-bottom: 12px;
+    display: block;
+    filter: drop-shadow(0 0 8px rgba(0,212,255,0.5));
+  }
+
+  #drop-zone .drop-title {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 13px;
+    color: var(--text);
+    margin-bottom: 6px;
+    letter-spacing: 2px;
+  }
+
+  #drop-zone .drop-sub {
+    font-size: 10px;
+    color: var(--muted);
+    letter-spacing: 1px;
+  }
+
+  #rom-input { display: none; }
+
+  .btn-main {
+    width: 100%;
+    max-width: 400px;
+    padding: 16px;
+    background: linear-gradient(135deg, rgba(0,212,255,0.1), rgba(255,0,110,0.1));
+    border: 1px solid var(--accent);
+    color: var(--accent);
+    font-family: 'Orbitron', sans-serif;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 3px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.3s;
+    box-shadow: 0 0 15px rgba(0,212,255,0.15);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+  }
+
+  .btn-main:active {
+    background: linear-gradient(135deg, rgba(0,212,255,0.2), rgba(255,0,110,0.2));
+    box-shadow: var(--glow);
+    transform: scale(0.98);
+  }
+
+  /* Status */
+  #status {
+    font-size: 11px;
+    color: var(--muted);
+    text-align: center;
+    min-height: 16px;
+    letter-spacing: 1px;
+  }
+  #status.ok { color: #00ff88; }
+  #status.err { color: var(--accent2); }
+  #status.loading { color: var(--accent); animation: pulse 1s infinite; }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+
+  /* Warning card */
+  .warn-card {
+    background: rgba(255,0,110,0.05);
+    border: 1px solid rgba(255,0,110,0.2);
+    border-radius: 6px;
+    padding: 12px 16px;
+    width: 100%;
+    max-width: 400px;
+    font-size: 10px;
+    color: #ff558a;
+    line-height: 1.7;
+    letter-spacing: 0.5px;
+  }
+
+  .warn-card b { color: var(--accent2); }
+
+  /* Fullscreen btn */
+  #fullscreen-btn {
+    position: fixed;
+    bottom: 16px;
+    right: 16px;
+    width: 44px;
+    height: 44px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 50%;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 18px;
+    z-index: 100;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+  }
+  #fullscreen-btn.visible { display: flex; }
+
+  /* Corner decorations */
+  .corner-tl, .corner-br {
+    position: fixed;
+    width: 30px;
+    height: 30px;
+    pointer-events: none;
+    opacity: 0.3;
+  }
+  .corner-tl { top: 8px; left: 8px; border-top: 1px solid var(--accent); border-left: 1px solid var(--accent); }
+  .corner-br { bottom: 8px; right: 8px; border-bottom: 1px solid var(--accent); border-right: 1px solid var(--accent); }
+
+  /* EmulatorJS overrides */
+  #emulator { width: 100%; height: 100%; }
+</style>
+</head>
+<body>
+
+<div class="corner-tl"></div>
+<div class="corner-br"></div>
+
+<header>
+  <div class="logo">RETROPLAY</div>
+  <div class="subtitle">PlayStation 1 · Browser Emulator</div>
+</header>
+
+<!-- LOAD SECTION -->
+<div id="load-section">
+
+  <div class="ps-logo">
+    <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="50" cy="50" r="45" stroke="#00d4ff" stroke-width="1.5" opacity="0.3"/>
+      <circle cx="50" cy="50" r="35" stroke="#00d4ff" stroke-width="1" opacity="0.2"/>
+      <!-- PS symbol simplified -->
+      <text x="50" y="58" text-anchor="middle" font-size="28" font-weight="900"
+        fill="url(#grad)" font-family="Arial Black, sans-serif">PS</text>
+      <defs>
+        <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#00d4ff"/>
+          <stop offset="100%" stop-color="#ff006e"/>
+        </linearGradient>
+      </defs>
+    </svg>
+  </div>
+
+  <div class="info-card">
+    <span class="label">// FORMATE SUPORTATE</span>
+    Încarcă orice ROM de PS1 din colecția ta personală.
+    <div class="format-list">
+      <span class="format-tag">.BIN/.CUE</span>
+      <span class="format-tag">.ISO</span>
+      <span class="format-tag">.IMG</span>
+      <span class="format-tag">.PBP</span>
+      <span class="format-tag">.CHD</span>
+    </div>
+  </div>
+
+  <div id="drop-zone" onclick="document.getElementById('rom-input').click()">
+    <span class="drop-icon">💾</span>
+    <div class="drop-title">ÎNCARCĂ ROM</div>
+    <div class="drop-sub">Apasă sau trage fișierul aici</div>
+  </div>
+  <input type="file" id="rom-input" accept=".bin,.cue,.iso,.img,.pbp,.chd,.zip,.7z">
+
+  <div id="status">// AȘTEPT ROM...</div>
+
+  <button class="btn-main" id="start-btn" disabled>
+    <span>▶</span> START GAME
+  </button>
+
+  <div class="warn-card">
+    <b>⚠ LEGAL:</b> Folosește doar ROM-uri din jocuri pe care le deții fizic. 
+    Totul rulează <b>local pe telefon</b> — niciun fișier nu se uploadează nicăieri.
+    Zero reclame. Zero tracking.
+  </div>
+
+</div>
+
+<!-- SCREEN SECTION -->
+<div id="screen-section">
+  <div class="game-title-bar">
+    <span id="current-game-name">—</span>
+    <button class="btn-small" onclick="resetEmulator()">⏹ STOP</button>
+  </div>
+  <div id="emulator-container">
+    <div id="emulator"></div>
+  </div>
+</div>
+
+<button id="fullscreen-btn" onclick="toggleFullscreen()" title="Fullscreen">⛶</button>
+
+<!-- EmulatorJS -->
+<script>
+  let selectedFile = null;
+  let EJS_player = null;
+
+  const romInput = document.getElementById('rom-input');
+  const dropZone = document.getElementById('drop-zone');
+  const startBtn = document.getElementById('start-btn');
+  const status = document.getElementById('status');
+
+  romInput.addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (file) handleFile(file);
+  });
+
+  dropZone.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    dropZone.classList.add('dragover');
+  });
+  dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+  dropZone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dropZone.classList.remove('dragover');
+    const file = e.dataTransfer.files[0];
+    if (file) handleFile(file);
+  });
+
+  function handleFile(file) {
+    selectedFile = file;
+    const name = file.name;
+    const size = (file.size / 1024 / 1024).toFixed(1);
+    dropZone.querySelector('.drop-title').textContent = name;
+    dropZone.querySelector('.drop-sub').textContent = `${size} MB · Gata de pornit`;
+    dropZone.style.borderColor = 'var(--accent)';
+    setStatus(`✓ ${name} selectat`, 'ok');
+    startBtn.disabled = false;
+  }
+
+  function setStatus(msg, type = '') {
+    status.textContent = msg;
+    status.className = type;
+  }
+
+  startBtn.addEventListener('click', () => {
+    if (!selectedFile) return;
+    startEmulator();
+  });
+
+  function startEmulator() {
+    setStatus('// SE ÎNCARCĂ EMULATORUL...', 'loading');
+
+    // Switch to screen view
+    document.getElementById('load-section').style.display = 'none';
+    const screenSection = document.getElementById('screen-section');
+    screenSection.classList.add('active');
+    document.getElementById('current-game-name').textContent = selectedFile.name.replace(/\.[^/.]+$/, '').toUpperCase();
+    document.getElementById('fullscreen-btn').classList.add('visible');
+
+    // Create object URL for the ROM
+    const romUrl = URL.createObjectURL(selectedFile);
+    const ext = selectedFile.name.split('.').pop().toLowerCase();
+
+    // Determine core
+    let core = 'psx';
+
+    // EmulatorJS config
+    window.EJS_player = '#emulator';
+    window.EJS_gameUrl = romUrl;
+    window.EJS_core = core;
+    window.EJS_pathtodata = 'https://cdn.emulatorjs.org/stable/data/';
+    window.EJS_startOnLoaded = true;
+    window.EJS_fullscreenOnLoaded = false;
+    window.EJS_color = '#00d4ff';
+    window.EJS_backgroundColor = '#0a0a0f';
+    window.EJS_Buttons = {
+      gamepad: true,
+      fullscreen: true,
+      save: true,
+      load: true,
+      screenshot: true,
+      volume: true,
+      mute: true,
+    };
+    window.EJS_onGameStart = () => {
+      setStatus('// RUNNING', 'ok');
+    };
+    window.EJS_onLoadState = () => {};
+
+    // Load EmulatorJS script dynamically
+    const script = document.createElement('script');
+    script.src = 'https://cdn.emulatorjs.org/stable/data/loader.js';
+    script.onerror = () => {
+      setStatus('// EROARE: Necesită conexiune internet pentru primul download', 'err');
+    };
+    document.body.appendChild(script);
+  }
+
+  function resetEmulator() {
+    // Reload page to reset
+    location.reload();
+  }
+
+  function toggleFullscreen() {
+    const container = document.getElementById('emulator-container');
+    if (!document.fullscreenElement) {
+      container.requestFullscreen().catch(() => {});
+    } else {
+      document.exitFullscreen();
+    }
+  }
+
+  // Lock screen orientation when fullscreen
+  document.addEventListener('fullscreenchange', () => {
+    if (document.fullscreenElement) {
+      screen.orientation?.lock?.('landscape').catch(() => {});
+    } else {
+      screen.orientation?.unlock?.();
+    }
+  });
+</script>
+
+</body>
+</html>
